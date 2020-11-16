@@ -61,6 +61,24 @@ func image() string {
 	return string(os[:len(os)-1]) // newline
 }
 
+func id() string {
+	buf, err := ioutil.ReadFile("/etc/os-release")
+	if err != nil {
+		return ""
+	}
+	i := bytes.Index(buf, []byte("ID="))
+	if i == 0 {
+		return ""
+	}
+	id := buf[i+len("ID="):]
+	j := bytes.Index(id, []byte("\n"))
+	if j == 0 {
+		return ""
+	}
+	id = id[:j]
+	return string(id[:len(id)-1]) // newline
+}
+
 func version() string {
 	cmd := exec.Command("systemd", "--version")
 	buf, err := cmd.Output()
