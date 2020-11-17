@@ -2,7 +2,13 @@ Current Status:
 
 * CreatePod, GetPod, GetPodStatus work
 * DeletePod might work
-* Tested on Ubuntu with `uptimed`
+* GetContainerLogs works (calls out to journalctl)
+* Tested on Ubuntu with `uptimed` and the k3s/uptimed.yaml manifest
+
+Not Yes:
+
+* UpdatePod (is this even useful?)
+* GetPods
 
 # Virtual Kubelet for systemd
 
