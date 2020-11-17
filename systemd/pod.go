@@ -3,11 +3,13 @@ package systemd
 // copied from virtual kubelet zun
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"os/exec"
 	"strings"
 
 	"github.com/miekg/vks/pkg/unit"
@@ -90,6 +92,7 @@ func (p *P) CreatePod(ctx context.Context, pod *corev1.Pod) error {
 // RunInContainer executes a command in a container in the pod, copying data
 // between in/out/err and the container's stdin/stdout/stderr.
 func (p *P) RunInContainer(ctx context.Context, namespace, name, container string, cmd []string, attach api.AttachIO) error {
+	// technically we can just give you a system shell here....
 	log.Printf("receive RunInContainer %q\n", container)
 	return nil
 }
@@ -109,7 +112,13 @@ func (p *P) GetPodStatus(ctx context.Context, namespace, name string) (*corev1.P
 }
 
 func (p *P) GetContainerLogs(ctx context.Context, namespace, podName, containerName string, opts api.ContainerLogOpts) (io.ReadCloser, error) {
-	return ioutil.NopCloser(strings.NewReader("not support in systemd provider")), nil
+	log.Printf("GetContainerLogs called")
+
+	args := []string{"-u", NamespaceNameToUnitName(namespace, podName, containerName, "*")} // * to wildcard the unit name (we don't have the uid)
+	cmd := exec.Command("journalctl", args...)
+	// returns the buffers? What about following, use pipes here or something?
+	buf, err := cmd.CombinedOutput()
+	return ioutil.NopCloser(bytes.NewReader(buf)), err
 }
 
 // UpdatePod is a noop,
@@ -134,7 +143,12 @@ func (p *P) DeletePod(ctx context.Context, pod *corev1.Pod) error {
 }
 
 func PodToUnitName(pod *corev1.Pod, image string) string {
-	return UnitPrefix(pod.Namespace, pod.Name) + Separator + image + Separator + string(pod.UID) + ".service"
+	return NamespaceNameToUnitName(pod.Namespace, pod.Name, image, string(pod.UID))
+}
+
+// We use image here, but it should containerName (probably)
+func NamespaceNameToUnitName(namespace, name, image, uid string) string {
+	return UnitPrefix(namespace, name) + Separator + image + Separator + uid + ".service"
 }
 
 func UnitPrefix(namespace, name string) string {
