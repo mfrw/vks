@@ -1,7 +1,9 @@
 package systemd
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/miekg/vks/pkg/system"
@@ -18,9 +20,11 @@ func unitToPod(units map[string]*unit.UnitState) *corev1.Pod {
 	}
 	name := ""
 	status := ""
+	var om metav1.ObjectMeta
 	for k, v := range units {
 		name = k
-		status = v.ActiveState
+		status = v.ActiveState // need to && all the stats together.??
+		om = v.Meta
 		break
 	}
 	// order of the map is random, need to sort.
@@ -34,9 +38,10 @@ func unitToPod(units map[string]*unit.UnitState) *corev1.Pod {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        Pod(name),
-			Namespace:   Namespace(name),
-			ClusterName: "cluster.local",
+			Namespace:   om.Namespace,
+			ClusterName: om.ClusterName,
 			UID:         types.UID(UID(name)),
+			UID:         om.UID,
 			//			CreationTimestamp: // do we know?
 		},
 		Spec: corev1.PodSpec{
@@ -147,4 +152,16 @@ func unitNames(units map[string]*unit.UnitState) []string {
 		i++
 	}
 	return sort.StringSlice(keys)
+}
+
+// objectMetaToSection converts the objectMeta into a buffer containing a [X-Kubernetes] section.
+// this allows us to store any Kubernetes metadata in the unit.
+func objectMetaToSection(om metav1.ObjectMeta) []byte {
+	b := new(strings.Builder)
+	b.WriteString("\n\n[X-Kubernetes]\n")
+	fmt.Fprintf(b, "namespace=%s\n", om.Namespace)
+	fmt.Fprintf(b, "clusterName=%s\n", om.ClusterName)
+	fmt.Fprintf(b, "uid=%s\n", string(om.UID))
+	// creation timestamp and other values? TODO
+	return []byte(b.String())
 }

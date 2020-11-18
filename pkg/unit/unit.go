@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/miekg/go-systemd/unit"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func NewUnitFile(raw string) (*UnitFile, error) {
@@ -51,7 +52,8 @@ func mapOptions(opts []*unit.UnitOption) map[string]map[string][]string {
 		}
 
 		var vals []string
-		if opt.Section == "X-Fleet" {
+		if opt.Section == "X-Kubernetes" {
+			// XXX(miek): was for fleet, remains to be seen if we need multi values per line
 			// The go-systemd parser does not know that our X-Fleet options support
 			// multivalue options, so we have to manually parse them here
 			vals = parseMultivalueLine(opt.Value)
@@ -166,6 +168,7 @@ func DefaultUnitType(name string) string {
 }
 
 // SHA1 sum
+// Do we need the hashing, we can't start identical pod anyway...?
 type Hash [sha1.Size]byte
 
 func (h Hash) String() string {
@@ -193,8 +196,7 @@ func HashFromHexString(key string) (Hash, error) {
 	return h, nil
 }
 
-// UnitState encodes the current state of a unit loaded into a fleet agent
-// TODO(miekg): extend this, or something, certainly get rid of 'fleet' in this file.
+// UnitState encodes the current state of a unit loaded into a vks agent
 type UnitState struct {
 	LoadState   string
 	ActiveState string
@@ -202,15 +204,7 @@ type UnitState struct {
 	MachineID   string
 	UnitHash    string
 	UnitName    string
-}
-
-func NewUnitState(loadState, activeState, subState, mID string) *UnitState {
-	return &UnitState{
-		LoadState:   loadState,
-		ActiveState: activeState,
-		SubState:    subState,
-		MachineID:   mID,
-	}
+	Meta        metav1.ObjectMeta
 }
 
 // UnitNameInfo exposes certain interesting items about a Unit based on its
