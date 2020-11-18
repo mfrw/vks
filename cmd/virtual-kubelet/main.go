@@ -39,9 +39,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// cluster domain??
 	o.Provider = "systemd"
 	o.Version = strings.Join([]string{k8sVersion, "vk-systemd", buildVersion}, "-")
 	o.NodeName = system.Hostname()
+
+	// logs
+	/*
+		// reuse the certs from the api???
+			r := mux.NewRouter()
+			r.HandleFunc("/containerLogs/{namespace}/{pod}/{container}", containerLogsHandler).Methods("GET")
+			err := http.ListenAndServeTLS(addr, certFilePath, keyFilePath, r)
+			// The
+	*/
 
 	node, err := cli.New(ctx,
 		cli.WithBaseOpts(o),
