@@ -2,6 +2,7 @@ package systemd
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -19,15 +20,25 @@ func unitToPod(units map[string]*unit.UnitState) *corev1.Pod {
 		return nil
 	}
 	name := ""
-	status := ""
-	var om metav1.ObjectMeta
-	for k, v := range units {
+	// Pick a random unit, the things we care about should be identical btween them.
+	// This identify is however not checked.
+	for k, _ := range units {
 		name = k
-		status = v.ActiveState // need to && all the stats together.??
-		om = v.Meta
 		break
 	}
-	// order of the map is random, need to sort.
+	uf, err := unit.NewUnitFile(units[name].UnitData)
+	if err != nil {
+		log.Printf("error while parsing unit file %s", err)
+	}
+
+	// See objectMetaToSection.
+	om := metav1.ObjectMeta{
+		Name:        Pod(name),
+		Namespace:   (uf.Contents[kubernetesSection]["namespace"])[0], // helper to not crash if not there?
+		ClusterName: (uf.Contents[kubernetesSection]["clusterName"])[0],
+		UID:         types.UID((uf.Contents[kubernetesSection]["uid"])[0]),
+	}
+
 	containers := toContainers(units)
 	containerStatuses := toContainerStatuses(units)
 
@@ -36,14 +47,7 @@ func unitToPod(units map[string]*unit.UnitState) *corev1.Pod {
 			Kind:       "Pod",
 			APIVersion: "v1",
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        Pod(name),
-			Namespace:   om.Namespace,
-			ClusterName: om.ClusterName,
-			UID:         types.UID(UID(name)),
-			UID:         om.UID,
-			//			CreationTimestamp: // do we know?
-		},
+		ObjectMeta: om,
 		Spec: corev1.PodSpec{
 			NodeName:   system.Hostname(),
 			Volumes:    []corev1.Volume{},
@@ -52,8 +56,8 @@ func unitToPod(units map[string]*unit.UnitState) *corev1.Pod {
 
 		// podstatus is the sum of all container statusses???
 		Status: corev1.PodStatus{
-			Phase:      activeStateToPhase(status),
-			Conditions: activeStateToPodConditions(status, metav1.NewTime(time.Now())),
+			Phase:      activeStateToPhase(units[name].ActiveState),
+			Conditions: activeStateToPodConditions(units[name].ActiveState, metav1.NewTime(time.Now())),
 			Message:    "",
 			Reason:     "",
 			HostIP:     "",
@@ -105,7 +109,7 @@ func toContainerStatuses(units map[string]*unit.UnitState) []corev1.ContainerSta
 			RestartCount:         int32(0),
 			Image:                Image(k),
 			ImageID:              "",
-			ContainerID:          "uuid", // from name?
+			ContainerID:          "uuid", // from name? (hash of the unit? we have it?
 		}
 		statuses = append(statuses, status)
 	}
@@ -126,9 +130,9 @@ func containerState(u *unit.UnitState) v1.ContainerState {
 	if u.ActiveState == "failed" || u.ActiveState == "inactive" {
 		return v1.ContainerState{
 			Terminated: &v1.ContainerStateTerminated{
-				ExitCode:   int32(0),
+				ExitCode:   int32(0), // we have all this
 				Reason:     u.ActiveState,
-				Message:    "yes",
+				Message:    "yes", // maybe this as well
 				StartedAt:  metav1.NewTime(time.Time(time.Now())),
 				FinishedAt: metav1.NewTime(time.Time(time.Now())),
 			},
@@ -158,10 +162,12 @@ func unitNames(units map[string]*unit.UnitState) []string {
 // this allows us to store any Kubernetes metadata in the unit.
 func objectMetaToSection(om metav1.ObjectMeta) []byte {
 	b := new(strings.Builder)
-	b.WriteString("\n\n[X-Kubernetes]\n")
+	fmt.Fprintf(b, "\n\n[%s]\n", kubernetesSection)
 	fmt.Fprintf(b, "namespace=%s\n", om.Namespace)
 	fmt.Fprintf(b, "clusterName=%s\n", om.ClusterName)
 	fmt.Fprintf(b, "uid=%s\n", string(om.UID))
 	// creation timestamp and other values? TODO
 	return []byte(b.String())
 }
+
+const kubernetesSection = "X-Kubernetes"

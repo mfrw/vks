@@ -230,6 +230,10 @@ func (m *UnitManager) GetUnitStates(prefix string) (map[string]*unit.UnitState, 
 		if h, ok := m.hashes[dus.Name]; ok {
 			us.UnitHash = h.String()
 		}
+		if buf, err := m.readUnit(dus.Name); err == nil {
+			// this should not error, but ... TODO(miek)
+			us.UnitData = buf
+		}
 		states[dus.Name] = us
 	}
 
